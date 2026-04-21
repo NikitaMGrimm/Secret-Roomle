@@ -41,6 +41,7 @@ export function runCore(gamemode) {
     var hardMode = false;
     var easyUSR = true; // easy ultra secret room mode for testing
     var showTileDistance = false;
+    var showAllInfo = false;
     var tileDistances = null;
 
     const startingGuesses = 6;
@@ -132,6 +133,10 @@ export function runCore(gamemode) {
         return (typeof entry === "function") ? entry(room) : entry;
     }
 
+    function getDisplayStage() {
+        return showAllInfo ? 2 : stage;
+    }
+
 
     // https://stackoverflow.com/questions/44484547/screen-width-screen-height-not-updating-after-screen-rotation iphones dont change screen.width when rotating, but the ability to zoom + fix on chrome and others when rotating is worth this minor flaw. still fully usable.
     if (/iPhone|iPad|iPod|Android|webOS|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)) {
@@ -179,8 +184,11 @@ export function runCore(gamemode) {
     if (gamemode == "daily") {
         var gamedata = JSON.parse(localStorage.getItem("secretRoomleData"));
     }
+    const defaultSettings = {isMuted: false, isEasyUSR: true, showTileDistance: true, showAllInfo: true};
     var settingsdata = localStorage.getItem("settingsData");
     settingsdata = JSON.parse(settingsdata);
+    settingsdata = settingsdata ? {...defaultSettings, ...settingsdata} : {...defaultSettings};
+
     if (settingsdata && settingsdata.isMuted) {
         setMute();
     }
@@ -190,14 +198,8 @@ export function runCore(gamemode) {
     if (settingsdata && settingsdata.showTileDistance) {
         setShowTileDistance();
     }
-    if (!settingsdata) {
-        settingsdata = {isMuted: false, isEasyUSR: true, showTileDistance: false};
-    }
-    if (!('isEasyUSR' in settingsdata)) {
-        settingsdata.isEasyUSR = true;
-    }
-    if (!('showTileDistance' in settingsdata)) {
-        settingsdata.showTileDistance = false;
+    if (settingsdata && settingsdata.showAllInfo) {
+        setShowAllInfo();
     }
     localStorage.setItem("settingsData", JSON.stringify(settingsdata));
 
@@ -480,6 +482,7 @@ export function runCore(gamemode) {
         if (showTileDistance && tileDistances == null) {
             tileDistances = calculateTileDistances();
         }
+        let displayStage = getDisplayStage();
         for (let x = roomSize; x < mapSize - roomSize; x += roomSize) {
             for (let y = roomSize; y < mapSize - roomSize; y += roomSize) {
                 let gridY = (y / roomSize) - 1;
@@ -493,13 +496,13 @@ export function runCore(gamemode) {
                     }
                 }
                 
-                let sprite = getRoomSprite(room, stage);
+                let sprite = getRoomSprite(room, displayStage);
                 if (sprite) drawCachedImage(sprite, x, y, roomSize, roomSize);
                 if (sprite && showTileDistance && tileDistances && tileDistances[gridY][gridX] != null) {
                     drawTileDistance(tileDistances[gridY][gridX], x, y);
                 }
 
-                if (stage == 2) {
+                if (displayStage == 2) {
                     // Draw rocks
                     if (room) {
                         if (room.rocks[0] == true) {
@@ -577,11 +580,11 @@ export function runCore(gamemode) {
 
     function drawTileDistance(distance, x, y) {
         ctx.save();
-        ctx.fillStyle = "rgba(90, 90, 90, 0.9)";
+        ctx.fillStyle = "rgba(50, 49, 49, 0.9)";
         ctx.font = `${Math.floor(roomSize * 0.34)}px Upheaval`;
-        ctx.textAlign = "center";
-        ctx.textBaseline = "middle";
-        ctx.fillText(distance, x + roomSize / 2, y + roomSize / 2);
+        ctx.textAlign = "left";
+        ctx.textBaseline = "bottom";
+        ctx.fillText(distance, x + (roomSize * 0.15), y + roomSize - (roomSize * 0.07));
         ctx.restore();
     }
 
@@ -1090,6 +1093,26 @@ export function runCore(gamemode) {
 
         if (settingsdata) {
             settingsdata.showTileDistance = showTileDistance;
+        }
+        localStorage.setItem("settingsData", JSON.stringify(settingsdata));
+        drawMap();
+    }
+
+    document.getElementById("showAllInfoButton").addEventListener("click", (event) => {
+        setShowAllInfo();
+    });
+
+    function setShowAllInfo() {
+        showAllInfo = !showAllInfo;
+
+        if (showAllInfo) {
+            document.getElementById("showAllInfoButton").style.backgroundImage = "url('images/checked.svg')";
+        } else {
+            document.getElementById("showAllInfoButton").style.backgroundImage = "url('images/unchecked.svg')";
+        }
+
+        if (settingsdata) {
+            settingsdata.showAllInfo = showAllInfo;
         }
         localStorage.setItem("settingsData", JSON.stringify(settingsdata));
         drawMap();
