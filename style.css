@@ -199,6 +199,37 @@ html {
   outline: none;
 }
 
+.distance-button-container {
+  position: absolute;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  display: inline-block;
+  height: 30px;
+  width: 36px;
+}
+
+.distance-button {
+  background-image: url('images/unchecked.svg');
+  background-size: cover;
+  background-position: center;
+  width: 100%;
+  height: 100%;
+  border: none;
+  color: black;
+  font-size: 20px;
+  font-weight: normal;
+  text-align: center;
+  cursor: pointer;
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background-color: transparent;
+  outline: none;
+}
+
 #gameCanvas {
   margin-top: 2.5rem;
   position: relative;
@@ -445,6 +476,7 @@ button:hover {
   font-family:'Upheaval';
   overflow-y: auto;
   max-height: 65vh;
+  min-height: 520px;
 }
 
 .close {
@@ -505,4 +537,3 @@ button:hover {
 
   
 }
-

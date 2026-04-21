@@ -40,6 +40,8 @@ export function runCore(gamemode) {
 
     var hardMode = false;
     var easyUSR = true; // easy ultra secret room mode for testing
+    var showTileDistance = false;
+    var tileDistances = null;
 
     const startingGuesses = 6;
 
@@ -185,11 +187,17 @@ export function runCore(gamemode) {
     if (settingsdata && settingsdata.isEasyUSR === false) {
         setEasyUSR();
     }
+    if (settingsdata && settingsdata.showTileDistance) {
+        setShowTileDistance();
+    }
     if (!settingsdata) {
-        settingsdata = {isMuted: false, isEasyUSR: true};
+        settingsdata = {isMuted: false, isEasyUSR: true, showTileDistance: false};
     }
     if (!('isEasyUSR' in settingsdata)) {
         settingsdata.isEasyUSR = true;
+    }
+    if (!('showTileDistance' in settingsdata)) {
+        settingsdata.showTileDistance = false;
     }
     localStorage.setItem("settingsData", JSON.stringify(settingsdata));
 
@@ -420,6 +428,7 @@ export function runCore(gamemode) {
     // Sets variables, and generates map, starting the game
     function startGame() {
         stopSounds();
+        tileDistances = null;
         generateLevel()
         initializeGamedata(guesses);
         drawMap();
@@ -468,9 +477,14 @@ export function runCore(gamemode) {
         }
 
         ctx.clearRect(0, 0, canvas.width, canvas.height);
+        if (showTileDistance && tileDistances == null) {
+            tileDistances = calculateTileDistances();
+        }
         for (let x = roomSize; x < mapSize - roomSize; x += roomSize) {
             for (let y = roomSize; y < mapSize - roomSize; y += roomSize) {
-                let room = generator.map[(y/roomSize) - 1][(x/roomSize) - 1];
+                let gridY = (y / roomSize) - 1;
+                let gridX = (x / roomSize) - 1;
+                let room = generator.map[gridY][gridX];
 
                 // If room is undefined or a hidden secret room, then if the current hovered coordinates are this room, fill it grey.
                 if (hoveredRoom && (!room || (room.type == "secret" && room.hidden) || (room.type == "supersecret" && room.hidden) || (room.type == "red" && room.hidden) || (room.type == "ultrasecret" && room.hidden))) { // fiddly short circuiting
@@ -481,6 +495,9 @@ export function runCore(gamemode) {
                 
                 let sprite = getRoomSprite(room, stage);
                 if (sprite) drawCachedImage(sprite, x, y, roomSize, roomSize);
+                if (sprite && showTileDistance && tileDistances && tileDistances[gridY][gridX] != null) {
+                    drawTileDistance(tileDistances[gridY][gridX], x, y);
+                }
 
                 if (stage == 2) {
                     // Draw rocks
@@ -508,6 +525,64 @@ export function runCore(gamemode) {
         } else if (won) {
             drawWinOrLose(true);
         }
+    }
+
+    function calculateTileDistances() {
+        let distances = [...Array(13)].map(() => Array(13).fill(null));
+        if (generator == null || !generator.map) {
+            return distances;
+        }
+        let startRoom = null;
+
+        for (let y = 0; y < 13; y++) {
+            for (let x = 0; x < 13; x++) {
+                if (generator.map[y][x] && generator.map[y][x].type == "start") {
+                    startRoom = generator.map[y][x];
+                    break;
+                }
+            }
+            if (startRoom) {
+                break;
+            }
+        }
+
+        if (!startRoom) {
+            return distances;
+        }
+
+        let queue = [[startRoom.posY, startRoom.posX]];
+        distances[startRoom.posY][startRoom.posX] = 0;
+
+        while (queue.length > 0) {
+            let [currentY, currentX] = queue.shift();
+            let currentDistance = distances[currentY][currentX];
+            let directions = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+
+            directions.forEach(([offsetY, offsetX]) => {
+                let nextY = currentY + offsetY;
+                let nextX = currentX + offsetX;
+                if (nextY < 0 || nextY >= 13 || nextX < 0 || nextX >= 13) {
+                    return;
+                }
+                if (!generator.map[nextY][nextX] || distances[nextY][nextX] != null) {
+                    return;
+                }
+                distances[nextY][nextX] = currentDistance + 1;
+                queue.push([nextY, nextX]);
+            });
+        }
+
+        return distances;
+    }
+
+    function drawTileDistance(distance, x, y) {
+        ctx.save();
+        ctx.fillStyle = "rgba(90, 90, 90, 0.9)";
+        ctx.font = `${Math.floor(roomSize * 0.34)}px Upheaval`;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText(distance, x + roomSize / 2, y + roomSize / 2);
+        ctx.restore();
     }
 
     // Function for timer, as well as updating the seed when a new date is rolled over to
@@ -997,6 +1072,27 @@ export function runCore(gamemode) {
             settingsdata.isEasyUSR = easyUSR;
         }
         localStorage.setItem("settingsData", JSON.stringify(settingsdata));
+    }
+
+    document.getElementById("distanceButton").addEventListener("click", (event) => {
+        setShowTileDistance();
+    });
+
+    function setShowTileDistance() {
+        showTileDistance = !showTileDistance;
+
+        if (showTileDistance) {
+            document.getElementById("distanceButton").style.backgroundImage = "url('images/checked.svg')";
+            tileDistances = calculateTileDistances();
+        } else {
+            document.getElementById("distanceButton").style.backgroundImage = "url('images/unchecked.svg')";
+        }
+
+        if (settingsdata) {
+            settingsdata.showTileDistance = showTileDistance;
+        }
+        localStorage.setItem("settingsData", JSON.stringify(settingsdata));
+        drawMap();
     }
 
 
