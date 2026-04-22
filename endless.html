@@ -18,25 +18,43 @@
         <div class="modal-content-3">
           <span class="close">&times;</span>
           <h2 style="color:white;font-weight: normal;margin-bottom: 3rem;"> Settings </h2>
-          <div class="mute-button-container">
-            <button id=muteButton class="mute-button"></button>
+          <div class="settings-list">
+            <div class="setting-row">
+              <div class="setting-toggle">
+                <button id="muteButton" class="mute-button"></button>
+              </div>
+              <div class="setting-copy">
+                <p class="setting-title">Toggle sound</p>
+              </div>
+            </div>
+            <div class="setting-row">
+              <div class="setting-toggle">
+                <button id="easyUSRButton" class="distance-button"></button>
+              </div>
+              <div class="setting-copy">
+                <p class="setting-title">Allow bombing Red Rooms</p>
+                <p class="setting-help">(With this setting enabled, bombing red rooms adjacent to the <span style="color: #9F0000">Ultra Secret Room</span> will reveal it. If disabled, only bombing the exact position will reveal the <span style="color: #9F0000">Ultra Secret Room</span>.)</p>
+              </div>
+            </div>
+            <div class="setting-row">
+              <div class="setting-toggle">
+                <button id="distanceButton" class="distance-button"></button>
+              </div>
+              <div class="setting-copy">
+                <p class="setting-title">Show distance from Start tile</p>
+                <p class="setting-help">(Displays each room's shortest distance from the initially visible start-state map in grey. Hidden rooms never count toward the path.)</p>
+              </div>
+            </div>
+            <div class="setting-row">
+              <div class="setting-toggle">
+                <button id="showAllInfoButton" class="distance-button"></button>
+              </div>
+              <div class="setting-copy">
+                <p class="setting-title">Show all clue info from the start</p>
+                <p class="setting-help">(Immediately shows room types and blocked walls instead of revealing them after wrong guesses.)</p>
+              </div>
+            </div>
           </div>
-          <p style="margin-top: 4.5rem;margin-bottom: 4rem;">Toggle sound</p>
-          <div class="easyUSR-button-container">
-            <button id=easyUSRButton class="easyUSR-button"></button>
-          </div>
-          <p style="margin-top: 5.5rem;">Allow bombing Red Rooms</p>
-          <p>(With this setting enabled, bombing red rooms adjacent to the <span style="color: #9F0000">Ultra Secret Room</span> will reveal it. If disabled, only bombing the exact position will reveal the <span style="color: #9F0000">Ultra Secret Room</span>.)</p>
-          <div class="distance-button-container">
-            <button id=distanceButton class="distance-button"></button>
-          </div>
-          <p style="margin-top: 4.5rem;">Show distance from Start tile</p>
-          <p>(Displays each visible room's shortest distance from the start room in grey. The start tile shows 0.)</p>
-          <div class="distance-button-container">
-            <button id=showAllInfoButton class="distance-button"></button>
-          </div>
-          <p style="margin-top: 4.5rem;">Show all clue info from the start</p>
-          <p>(Immediately shows room types and blocked walls instead of revealing them after wrong guesses.)</p>
         </div>
       </div>
       <div id="howToPlayModal" class="modal">

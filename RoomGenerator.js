@@ -1,3 +1,8 @@
+import {
+    buildUltraWorlds,
+    getSecretCandidateProfile
+} from "./RoomRules.js";
+
 // Can add ultra secret once done for extra challenge, will require red rooms filling all empty space, then using connection rules
 // Gameplay can be like, first guess is nothing, each fail reveals new info such as boss room, rooms with blocked sides, etc.
 // ^ yep so, nothing, then reveal room types, then reveal blocked sides, anything else? idk
@@ -95,7 +100,7 @@ export class Generator {
             if (coord[0] < 0 || coord[0] >= 13 || coord[1] < 0 || coord[1] >= 13) {
                 return;
             }
-            if (this.map[coord[0]][coord[1]] instanceof  Room) {
+            if (this.map[coord[0]][coord[1]]) {
                 neighbours.push(this.map[coord[0]][coord[1]]);
             }
         });
@@ -371,27 +376,13 @@ export class Generator {
             }
         }
         candidates.forEach(candidate => {
-            let invalidFlag = false;
-            let candidateNeighbours = this.findNeighbours(candidate);
-            let numNeighbours = 0;
-            candidateNeighbours.forEach(neighbour => {
-                if (neighbour.type == "boss" || neighbour.type == "supersecret") {
-                    invalidFlag = true;
-                    return;
-                } 
-                numNeighbours += 1;
-            });
-            if (this.stage == 11 && candidate.posY == 5 && candidate.posX == 6) { // ensures no secret room can be placed where mega satan is
-                invalidFlag = true;
-            }
-            if (invalidFlag) {
+            const profile = getSecretCandidateProfile(this.map, this.stage, candidate.posY, candidate.posX);
+            if (!profile || profile.invalid || profile.numNeighbours === 0) {
                 candidate.secretWeight = 0;
-            } else if (numNeighbours == 2) {
+            } else if (profile.numNeighbours == 2) {
                 candidate.secretWeight -= 3; // Consider making this -2 to make 2s more common - actualy makes lnly basement have them and its just a pain and feels unfair
-            } else if (numNeighbours == 1) {
+            } else if (profile.numNeighbours == 1) {
                 candidate.secretWeight -= 6
-            } else if (numNeighbours == 0) {
-                candidate.secretWeight = 0;
             }
         });
         // Find highest weight candidate (with some randomness for equal weights)
@@ -425,152 +416,21 @@ export class Generator {
     // delete all red rooms except for the ones adjacent ! for rock logic!
     // WANT TO RETURN IF IT WAS SUCCESSFUL OR NOT IN CASE LOOP SHOULD B RESTARTED
     placeUltraSecretRoom() {
-        // Welcome to for loop hell my friends
-        // Loop over all spaces on the map
-        for(let i = 0; i < 13; i++) {
-            for(let j = 0; j < 13; j++) {
-                // if undefined, create a room here, generate neighbours, if neighbours list contains a room, place red room here. if neighbours list contains boss, curse or secret, dont place here.
-                if (!this.map[j][i]) {
-                    let redRoomCandidate = new Room(j, i);
-                    let redRoomCandidateNeighbours = this.findNeighbours(redRoomCandidate);
-                    let valid = true;
-                    let redCounter = 0
-                    let blue = false;
-                    if (redRoomCandidateNeighbours.length > 0) {
-                        redRoomCandidateNeighbours.forEach(redRoomCandidateNeighbour => {
-                            if (redRoomCandidateNeighbour.type == "boss" || redRoomCandidateNeighbour.type == "curse" || redRoomCandidateNeighbour.type == "secret" || redRoomCandidateNeighbour.type == "supersecret") {
-                                blue = true; // Blue rooms are red rooms but next to an invalid room so EXCLUDE an ultra secret room from spawning next to them, as per the wiki
-                            }
-                            // checking that at least one neighbour isnt also a red room!
-                            if (redRoomCandidateNeighbour.type == "red" || redRoomCandidateNeighbour.type == "blue") {
-                                redCounter +=1;
-                            }
-                        });
-                    } else {
-                        valid = false;
-                    }
-                    if (redCounter == redRoomCandidateNeighbours.length) {
-                        valid = false;
-                    }
-                    // DONT ALLOW RED ROOM IN MEGA SATAN SPOT
-                    if (this.stage == 11 && redRoomCandidate.posY == 5 && redRoomCandidate.posX == 6) {
-                        valid = false;
-                    }
-                    if (valid) {
-                        if (blue) {
-                            redRoomCandidate.type = "blue";
-                        } else {
-                            redRoomCandidate.type = "red";
-                        }
-                        redRoomCandidate.hidden = true;
-                        this.map[j][i] = redRoomCandidate;
-                    }
-                }
-            }
-        }
-        
-        // Now that red and blue rooms are placed, go through all rooms and if a red room neighbour +  doesnt touch any non-red rooms , add to ultraCandidates list
-        let ultraCandidates = [];
-        for(let i = 1; i < 12; i++) {
-            for(let j = 1; j < 12; j++) { // Restrict search to not include edges as these are never valid
-                if (this.map[j][i]) {
-                    continue;
-                }
-                let ultraCandidate = new Room(j, i);
-                ultraCandidate.type = "ultrasecret";
-                ultraCandidate.hidden = true;
-                let ultraCandidateNeighbours = this.findNeighbours(ultraCandidate);
-                if (ultraCandidateNeighbours.length == 0) {
-                    continue;
-                }
-                let valid = true;
-                ultraCandidateNeighbours.forEach(ultraCandidateNeighbour => {
-                    if (ultraCandidateNeighbour.type != "red") {
-                        valid = false;
-                    } 
-                });
-                if (valid) {
-                    ultraCandidates.push(ultraCandidate);
-                }
-            }
-        }        
-
-        // ultraCandidates.forEach(ultraCandidate => {
-        //     this.map[ultraCandidate.posY][ultraCandidate.posX] = ultraCandidate;
-        // });
-
-        // Assign each ultraCandidate its weight
-        let weightedCandidates = []
-        ultraCandidates.forEach(ultraCandidate => {
-            let ultraCandidateNeighbours = this.findNeighbours(ultraCandidate); // Guarenteed to only be red rooms
-            // For eachr adjacent red room to a candidate position, find what normal rooms are adjacent to these and add to a unique list 
-            let roomSet = new Set();
-            ultraCandidateNeighbours.forEach(ultraCandidateNeighbour => {
-                let ultraCandidateNeighboursSquared = this.findNeighbours(ultraCandidateNeighbour); // List of normal rooms adjacent to the red room
-                ultraCandidateNeighboursSquared.forEach(ultraCandidateNeighboursSquare => {
-                    if (ultraCandidateNeighboursSquare.type != "red" && ultraCandidateNeighboursSquare.type != "blue") {
-                        roomSet.add(`${ultraCandidateNeighboursSquare.posY}|${ultraCandidateNeighboursSquare.posX}`)
-                    }
-                });
-            });
-            if (roomSet.size >= 3){
-                console.log(roomSet.size);
-                console.log(roomSet);
-                console.log(ultraCandidate.posX)
-                console.log(ultraCandidate.posY)
-            }
-            
-            // Based on size of roomSet, weight values
-            let weight;
-            if (roomSet.size >= 3) {
-                weight = 11.5; // 11.5x more likely than 2 room
-                weightedCandidates.push({room: ultraCandidate, weight: weight});
-            } else if (roomSet.size == 2) {
-                weight = 1;
-                weightedCandidates.push({room: ultraCandidate, weight: weight});
-            } else {
-                // DO NOT ALLOW ONE ADJACENT ROOMS - UNFUN AND UNFAIR FOR A DAILY GAME. IF THE MAP ONLY HAS 1,S THEN JUST REGENERATE
-            }
-        });
-
-        // If no options wiht 2+ adjacent rooms, fail
-        if (weightedCandidates.length == 0) {
+        const weightedCandidates = buildUltraWorlds(this.map, this.stage);
+        if (weightedCandidates.length === 0) {
             return false;
         }
 
-        // Select a candidate and set as the ultra secret room
         let totalWeight = weightedCandidates.reduce((sum, entry) => sum + entry.weight, 0); // Calcs total weight for random range
         let selected = Math.random() * totalWeight;
-        let ultraSecretRoom = null;
+        let selectedWorld = null;
         weightedCandidates.forEach(candidate => {
             selected -= candidate.weight;
-            if (selected <= 0 && !ultraSecretRoom) {
-                ultraSecretRoom = candidate.room;
+            if (selected <= 0 && !selectedWorld) {
+                selectedWorld = candidate;
             }
         });
-
-        this.map[ultraSecretRoom.posY][ultraSecretRoom.posX] = ultraSecretRoom;
-
-        // Cleanup - remove all red and blue rooms except those bordering the ultra secret
-        for(let i = 0; i < 13; i++) {
-            for(let j = 0; j < 13; j++) {
-                if (this.map[j][i] && this.map[j][i].type == "blue") {
-                    this.map[j][i] = null;
-                }
-                if (this.map[j][i] && this.map[j][i].type == "red") { // If red, only set to null if doesnt border the ultra secret
-                    let redNeighbours = this.findNeighbours(this.map[j][i]);
-                    let del = true;
-                    redNeighbours.forEach(redNeighbour => {
-                        if (redNeighbour.type == "ultrasecret") {
-                            del = false;
-                        }
-                    });
-                    if (del) {
-                        this.map[j][i] = null;
-                    }
-                }
-            }
-        }
+        this.map = selectedWorld.map;
 
         return true;
     }
@@ -659,5 +519,3 @@ function shuffleArray(array) {
 // let generator = new Generator(4, false, false, false);
 // generator.generateMap();
 // generator.printMap();
-
-

@@ -3,6 +3,10 @@
     src: url('./fonts/upheavtt.ttf') format('truetype');
 }
 
+:root {
+  --desktop-ui-scale: 1.5;
+}
+
 body {
   color: black; 
   background-repeat: no-repeat; 
@@ -16,6 +20,25 @@ body {
 
 html {
   height: 100%;
+}
+
+/* Scale the desktop UI to match roughly 150% browser zoom. */
+@media (min-width: 571px) {
+  body {
+    zoom: var(--desktop-ui-scale);
+  }
+}
+
+/* Firefox fallback where zoom is not supported. */
+@supports not (zoom: 1) {
+  @media (min-width: 571px) {
+    #outerDiv {
+      transform: scale(var(--desktop-ui-scale));
+      transform-origin: top center;
+      width: calc(100% / var(--desktop-ui-scale));
+      margin: 0 auto;
+    }
+  }
 }
 
 #outerDiv {
@@ -212,22 +235,61 @@ html {
   background-image: url('images/unchecked.svg');
   background-size: cover;
   background-position: center;
-  width: 100%;
-  height: 100%;
+  width: 36px;
+  height: 30px;
   border: none;
   color: black;
   font-size: 20px;
   font-weight: normal;
   text-align: center;
   cursor: pointer;
-  position: absolute;
-  top: 0;
-  left: 0;
-  display: flex;
-  justify-content: center;
-  align-items: center;
+  position: relative;
+  display: block;
   background-color: transparent;
   outline: none;
+}
+
+.mute-button {
+  width: 36px;
+  height: 30px;
+  position: relative;
+  top: auto;
+  left: auto;
+  display: block;
+}
+
+.settings-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1.35rem;
+  text-align: left;
+}
+
+.setting-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 1rem;
+}
+
+.setting-toggle {
+  flex: 0 0 36px;
+  display: flex;
+  justify-content: center;
+  padding-top: 0.1rem;
+}
+
+.setting-copy {
+  flex: 1;
+  min-width: 0;
+}
+
+.setting-title {
+  margin: 0 0 0.35rem 0;
+}
+
+.setting-help {
+  margin: 0;
+  line-height: 1.2;
 }
 
 #gameCanvas {

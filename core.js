@@ -1,4 +1,5 @@
 import { Room, Generator } from './RoomGenerator.js';
+import { calculateInitialVisibleTileDistances } from './RoomRules.js';
 
 export function runCore(gamemode) {
 
@@ -43,8 +44,13 @@ export function runCore(gamemode) {
     var showTileDistance = false;
     var showAllInfo = false;
     var tileDistances = null;
+    var initialTileDistances = null;
+    var outerBombedRooms = {};
+    var initialPuzzleSnapshot = null;
 
     const startingGuesses = 6;
+    const ROOM_GRID_SIZE = 13;
+    const CANVAS_GRID_SIZE = 15;
 
     //Size constants
     var size;
@@ -137,6 +143,70 @@ export function runCore(gamemode) {
         return showAllInfo ? 2 : stage;
     }
 
+    function isInMainGrid(x, y) {
+        return x >= 0 && x < ROOM_GRID_SIZE && y >= 0 && y < ROOM_GRID_SIZE;
+    }
+
+    function persistDailyData() {
+        if (gamemode == "daily") {
+            localStorage.setItem("secretRoomleData", JSON.stringify(gamedata));
+        }
+    }
+
+    function persistCurrentProgress() {
+        if (gamemode != "daily" || !gamedata || !generator) {
+            return;
+        }
+
+        gamedata.currentMap = generator.map;
+        gamedata.currentProgress.stage = stage;
+        gamedata.currentProgress.guesses = guesses;
+        gamedata.currentProgress.secretFound = secretFound;
+        gamedata.currentProgress.supersecretFound = supersecretFound;
+        gamedata.currentProgress.ultrasecretFound = ultrasecretFound;
+        gamedata.currentProgress.attempts = attempts;
+        gamedata.currentProgress.gameover = gameover;
+        gamedata.currentProgress.won = won;
+        gamedata.currentProgress.lost = lost;
+        persistDailyData();
+    }
+
+    function getDisplayedGuesses() {
+        return guesses - (showAllInfo ? 1 : 0);
+    }
+
+    function renderBombHud() {
+        const valueElement = document.getElementById("guessesremaining");
+        if (!valueElement) {
+            return;
+        }
+        valueElement.textContent = getDisplayedGuesses();
+    }
+
+    function refreshInitialTileDistances() {
+        const sourceMap = initialPuzzleSnapshot?.map ?? generator?.map;
+        initialTileDistances = sourceMap ? calculateInitialVisibleTileDistances(sourceMap) : null;
+        tileDistances = showTileDistance ? initialTileDistances : null;
+    }
+
+    function loadInitialSnapshot(snapshot) {
+        initialPuzzleSnapshot = snapshot ?? null;
+        refreshInitialTileDistances();
+    }
+
+    function createInitialSnapshot() {
+        initialPuzzleSnapshot = {
+            map: JSON.parse(JSON.stringify(generator.map)),
+            hardMode,
+            showAllInfo
+        };
+        refreshInitialTileDistances();
+        if (gamemode == "daily") {
+            gamedata.initialPuzzleSnapshot = initialPuzzleSnapshot;
+            persistDailyData();
+        }
+    }
+
 
     // https://stackoverflow.com/questions/44484547/screen-width-screen-height-not-updating-after-screen-rotation iphones dont change screen.width when rotating, but the ability to zoom + fix on chrome and others when rotating is worth this minor flaw. still fully usable.
     if (/iPhone|iPad|iPod|Android|webOS|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)) {
@@ -184,7 +254,12 @@ export function runCore(gamemode) {
     if (gamemode == "daily") {
         var gamedata = JSON.parse(localStorage.getItem("secretRoomleData"));
     }
-    const defaultSettings = {isMuted: false, isEasyUSR: true, showTileDistance: true, showAllInfo: true};
+    const defaultSettings = {
+        isMuted: false,
+        isEasyUSR: true,
+        showTileDistance: true,
+        showAllInfo: true
+    };
     var settingsdata = localStorage.getItem("settingsData");
     settingsdata = JSON.parse(settingsdata);
     settingsdata = settingsdata ? {...defaultSettings, ...settingsdata} : {...defaultSettings};
@@ -192,9 +267,7 @@ export function runCore(gamemode) {
     if (settingsdata && settingsdata.isMuted) {
         setMute();
     }
-    if (settingsdata && settingsdata.isEasyUSR === false) {
-        setEasyUSR();
-    }
+    applyEasyUSRState(settingsdata?.isEasyUSR);
     if (settingsdata && settingsdata.showTileDistance) {
         setShowTileDistance();
     }
@@ -214,6 +287,7 @@ export function runCore(gamemode) {
     function initializeGamedata(levelGuesses) {
         // Once game starts, load localstorage gamedata and load in the data if relevant
         // Get game data
+        let shouldCreateSnapshot = gamemode == "endless";
         if (gamemode == "daily") {
             if (gamedata) {
                 let parsedData = gamedata;
@@ -221,6 +295,7 @@ export function runCore(gamemode) {
                 if ( getPuzzleNumber()!= parsedData.lastPlayedDate) {
                     parsedData.lastPlayedDate = getPuzzleNumber();
                     parsedData.currentMap = null;
+                    parsedData.initialPuzzleSnapshot = null;
                     parsedData.currentProgress = {stage: 0,
                                                 guesses: levelGuesses,
                                                 secretFound: false,
@@ -232,6 +307,8 @@ export function runCore(gamemode) {
                                                 lost: false,
                                                 time: 0
                                                 };
+                    loadInitialSnapshot(null);
+                    shouldCreateSnapshot = true;
                 } else { // Otherwise set the variables to continue todays progress
                     // Set generator variables to the saved ones
                     if (parsedData.currentMap != null) {
@@ -252,6 +329,10 @@ export function runCore(gamemode) {
                         gameTime = parsedData.currentProgress.time;
                     } else {
                         gameTime = 0;
+                    }
+                    loadInitialSnapshot(parsedData.initialPuzzleSnapshot);
+                    if (parsedData.currentMap == null && parsedData.initialPuzzleSnapshot == null) {
+                        shouldCreateSnapshot = true;
                     }
                 }
                 // IF upon initialising gamedata, it is found the the last win was over 1 puzzle ago, reset the winstreak!
@@ -276,6 +357,7 @@ export function runCore(gamemode) {
                     lastPlayedDate: getPuzzleNumber(),
                     lastWonDate: null,
                     currentMap: null,
+                    initialPuzzleSnapshot: null,
                     currentProgress: {
                         stage: 0,
                         guesses: levelGuesses,
@@ -300,25 +382,35 @@ export function runCore(gamemode) {
                         fastestTimeUltra: -1
                     }
                 };
+                loadInitialSnapshot(null);
+                shouldCreateSnapshot = true;
             }
-            localStorage.setItem("secretRoomleData", JSON.stringify(gamedata));
+            persistDailyData();
             // Set timer (separate from setelements as setelements is called elsewhere where you dont want to set the timer)
             let elapsed = Date.now() - startTime;
             let seconds = gameTime + (elapsed/1000);
             let formatted = new Date(seconds * 1000).toISOString().substring(14, 22);
             document.getElementById("timerSpan").innerHTML = formatted;
             startTime = Date.now(); // Sets start time for timer to reference
+        } else {
+            loadInitialSnapshot(null);
         }
+
+        const savedHardMode = gamemode == "daily" ? gamedata.initialPuzzleSnapshot?.hardMode : null;
+        if (savedHardMode != null) {
+            setHard(savedHardMode);
+        } else if (gamemode == "daily" && settingsdata && settingsdata.hardModeDaily) {
+            setHard(true);
+        } else if (gamemode == "endless" && settingsdata && settingsdata.hardModeEndless) {
+            setHard(true);
+        }
+
+        if (shouldCreateSnapshot) {
+            createInitialSnapshot();
+        }
+
         // Set stats
         setElements();
-        // Set hard
-        if (gamemode == "daily" && settingsdata && settingsdata.hardModeDaily) {
-            setHard(true);
-        }
-        if (gamemode == "endless" && settingsdata && settingsdata.hardModeEndless) {
-            setHard(true);
-        }
-        
     }
 
     // Sets the text of the page based on game data and current game
@@ -344,7 +436,7 @@ export function runCore(gamemode) {
 
         }
         // Also set the guesses remaining for this current game
-        document.getElementById("guessesremaining").textContent = guesses;
+        renderBombHud();
         document.getElementById("floorname").textContent = levelname;
 
 
@@ -407,7 +499,7 @@ export function runCore(gamemode) {
         }
         Math.random() // Call to keep the rng consistent!!!!
         hard =  true; // Always use hard mode - I mean no point randomly choosing normal (who plays that anyway am i right?)
-        generator = new Generator(levelnum, curseLabyrinth, lost, hard);
+        generator = new Generator(levelnum, curseLabyrinth, curseLost, hard);
         levelname = floornames[levelnum-1][Math.floor(Math.random() * floornames[levelnum-1].length)]
 
         stage = 0; // stage = 1 is room types, stage = 2 is rocks
@@ -431,6 +523,9 @@ export function runCore(gamemode) {
     function startGame() {
         stopSounds();
         tileDistances = null;
+        initialTileDistances = null;
+        outerBombedRooms = {};
+        initialPuzzleSnapshot = null;
         generateLevel()
         initializeGamedata(guesses);
         drawMap();
@@ -480,31 +575,37 @@ export function runCore(gamemode) {
 
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         if (showTileDistance && tileDistances == null) {
-            tileDistances = calculateTileDistances();
+            refreshInitialTileDistances();
         }
         let displayStage = getDisplayStage();
-        for (let x = roomSize; x < mapSize - roomSize; x += roomSize) {
-            for (let y = roomSize; y < mapSize - roomSize; y += roomSize) {
-                let gridY = (y / roomSize) - 1;
-                let gridX = (x / roomSize) - 1;
-                let room = generator.map[gridY][gridX];
+        for (let cellX = 0; cellX < CANVAS_GRID_SIZE; cellX += 1) {
+            for (let cellY = 0; cellY < CANVAS_GRID_SIZE; cellY += 1) {
+                let x = cellX * roomSize;
+                let y = cellY * roomSize;
+                let gridY = cellY - 1;
+                let gridX = cellX - 1;
+                let room = isInMainGrid(gridX, gridY)
+                    ? generator.map[gridY][gridX]
+                    : outerBombedRooms[`${gridX},${gridY}`];
 
                 // If room is undefined or a hidden secret room, then if the current hovered coordinates are this room, fill it grey.
                 if (hoveredRoom && (!room || (room.type == "secret" && room.hidden) || (room.type == "supersecret" && room.hidden) || (room.type == "red" && room.hidden) || (room.type == "ultrasecret" && room.hidden))) { // fiddly short circuiting
-                    if ((y/roomSize) - 1 == (Math.floor(hoveredRoom[1]/roomSize)) - 1 && (x/roomSize) - 1 == (Math.floor(hoveredRoom[0]/roomSize)) - 1) {
+                    let hoveredCellX = Math.floor(hoveredRoom[0] / roomSize);
+                    let hoveredCellY = Math.floor(hoveredRoom[1] / roomSize);
+                    if (cellY == hoveredCellY && cellX == hoveredCellX) {
                         drawCachedImage("bomb", x, y, roomSize, roomSize);
                     }
                 }
                 
                 let sprite = getRoomSprite(room, displayStage);
                 if (sprite) drawCachedImage(sprite, x, y, roomSize, roomSize);
-                if (sprite && showTileDistance && tileDistances && tileDistances[gridY][gridX] != null) {
+                if (sprite && isInMainGrid(gridX, gridY) && showTileDistance && tileDistances && tileDistances[gridY][gridX] != null) {
                     drawTileDistance(tileDistances[gridY][gridX], x, y);
                 }
 
                 if (displayStage == 2) {
                     // Draw rocks
-                    if (room) {
+                    if (room && isInMainGrid(gridX, gridY)) {
                         if (room.rocks[0] == true) {
                             drawCachedImage("rock", x+halfCell, y, rockSize, rockSize);
                         }
@@ -528,54 +629,6 @@ export function runCore(gamemode) {
         } else if (won) {
             drawWinOrLose(true);
         }
-    }
-
-    function calculateTileDistances() {
-        let distances = [...Array(13)].map(() => Array(13).fill(null));
-        if (generator == null || !generator.map) {
-            return distances;
-        }
-        let startRoom = null;
-
-        for (let y = 0; y < 13; y++) {
-            for (let x = 0; x < 13; x++) {
-                if (generator.map[y][x] && generator.map[y][x].type == "start") {
-                    startRoom = generator.map[y][x];
-                    break;
-                }
-            }
-            if (startRoom) {
-                break;
-            }
-        }
-
-        if (!startRoom) {
-            return distances;
-        }
-
-        let queue = [[startRoom.posY, startRoom.posX]];
-        distances[startRoom.posY][startRoom.posX] = 0;
-
-        while (queue.length > 0) {
-            let [currentY, currentX] = queue.shift();
-            let currentDistance = distances[currentY][currentX];
-            let directions = [[1, 0], [-1, 0], [0, 1], [0, -1]];
-
-            directions.forEach(([offsetY, offsetX]) => {
-                let nextY = currentY + offsetY;
-                let nextX = currentX + offsetX;
-                if (nextY < 0 || nextY >= 13 || nextX < 0 || nextX >= 13) {
-                    return;
-                }
-                if (!generator.map[nextY][nextX] || distances[nextY][nextX] != null) {
-                    return;
-                }
-                distances[nextY][nextX] = currentDistance + 1;
-                queue.push([nextY, nextX]);
-            });
-        }
-
-        return distances;
     }
 
     function drawTileDistance(distance, x, y) {
@@ -621,8 +674,10 @@ export function runCore(gamemode) {
             let seconds = gameTime + (elapsed/1000);
             let formatted = new Date(seconds * 1000).toISOString().substring(14, 22);
             document.getElementById("timerSpan").innerHTML = formatted;
-            gamedata.currentProgress.time = seconds;
-            localStorage.setItem("secretRoomleData", JSON.stringify(gamedata));
+            if (gamemode == "daily") {
+                gamedata.currentProgress.time = seconds;
+                persistDailyData();
+            }
         }
     }
 
@@ -679,7 +734,7 @@ export function runCore(gamemode) {
             null); // Attempt at balance based on starting floor - now hard coded to give a roughly even spread for each floor!
             // Spread for normal (6 guesses) 2 green 2 yellow 1 orange, stage 10 (8 guesses) is 2 green 3 yellow 2 orange, stage 12 (10 guesses) is 3 green 3 yellow 3 orange!
             // Spread for hard: (8 guesses) 2 green 2 yellow 2 orange (1 less cause takes 1 more bomb), stage 11 (10 guesses) 3 green 3 yellow 2 orange, stage 12 (12 gueses) green 3 yellow 4 orange 3
-        results += `\n${bombPerformance} ${guesses}/${totalBombs} bomb(s) remaining`
+        results += `\n${bombPerformance} ${getDisplayedGuesses()}/${totalBombs} bomb(s) remaining`
 
         let elapsed = Date.now() - startTime;
         let seconds = gameTime + (elapsed/1000);
@@ -718,9 +773,9 @@ export function runCore(gamemode) {
     }
 
     function unhideRooms(predicate) {
-        for (let x = roomSize; x < mapSize - roomSize; x += roomSize) {
-            for (let y = roomSize; y < mapSize - roomSize; y += roomSize) {
-                let room = generator.map[(y / roomSize) - 1][(x / roomSize) - 1];
+        for (let x = 0; x < ROOM_GRID_SIZE; x += 1) {
+            for (let y = 0; y < ROOM_GRID_SIZE; y += 1) {
+                let room = generator.map[y][x];
                 if (room && predicate(room)) {
                     room.hidden = false;
                     if (room.type == "redwrong" && hardMode && !easyUSR) {
@@ -744,7 +799,11 @@ export function runCore(gamemode) {
             }
             let newRoom = new Room(y,x);
             newRoom.type = "wrong";
-            generator.map[y][x] = newRoom;
+            if (isInMainGrid(x, y)) {
+                generator.map[y][x] = newRoom;
+            } else {
+                outerBombedRooms[`${x},${y}`] = newRoom;
+            }
             stage = Math.min(2, stage+1);
             guesses -= 1;
             playSfx(bombSfx);
@@ -811,12 +870,13 @@ export function runCore(gamemode) {
             guesses -= 1;
             playSfx(bombSfx);
         }
-        document.getElementById("guessesremaining").textContent = guesses; // Update guesses remaining visually
+        renderBombHud();
     }
 
     function handleGameOver() {
+        const displayedGuesses = getDisplayedGuesses();
         // Game over logic
-        if (guesses == 0 && !(secretFound && supersecretFound) && !hardMode) { // Loss on normal
+        if (displayedGuesses <= 0 && !(secretFound && supersecretFound) && !hardMode) { // Loss on normal
             gameover = true;
             won = false;
             lost = true;
@@ -830,7 +890,7 @@ export function runCore(gamemode) {
             }
             loseSfx.play();
             deathSfx.play();
-        } else if (guesses == 0 && !(secretFound && supersecretFound && ultrasecretFound) && hardMode) { // Loss on hard
+        } else if (displayedGuesses <= 0 && !(secretFound && supersecretFound && ultrasecretFound) && hardMode) { // Loss on hard
             gameover = true;
             won = false;
             lost = true;
@@ -902,13 +962,17 @@ export function runCore(gamemode) {
             let transform = ctx.getTransform();
             let transformedX = (event.offsetX - transform.e) * (size/visualSize);
             let transformedY = (event.offsetY - transform.f) * (size/visualSize);
-            let y = Math.floor(transformedY/roomSize) - 1;
-            let x = Math.floor(transformedX/roomSize) - 1;
-            if (x < 0 || x > 12 || y < 0 || y > 12) { // Cant place bombs out of 13x13 grid
+            let cellX = Math.floor(transformedX / roomSize);
+            let cellY = Math.floor(transformedY / roomSize);
+            if (cellX < 0 || cellX >= CANVAS_GRID_SIZE || cellY < 0 || cellY >= CANVAS_GRID_SIZE) {
                 return;
             }
+            let x = cellX - 1;
+            let y = cellY - 1;
 
-            var room = generator.map[y][x];
+            var room = isInMainGrid(x, y)
+                ? generator.map[y][x]
+                : outerBombedRooms[`${x},${y}`];
             // If room is undefined, set it to a wrong room
             handleRoomClick(room, x, y);
 
@@ -920,19 +984,7 @@ export function runCore(gamemode) {
             }
 
             // After every valid click, update localstorage with info about todays game, overwriting it.
-            if (gamemode == "daily") {
-                gamedata.currentMap = generator.map;
-                gamedata.currentProgress.stage = stage;
-                gamedata.currentProgress.guesses = guesses;
-                gamedata.currentProgress.secretFound = secretFound;
-                gamedata.currentProgress.supersecretFound = supersecretFound;
-                gamedata.currentProgress.ultrasecretFound = ultrasecretFound;
-                gamedata.currentProgress.attempts = attempts;
-                gamedata.currentProgress.gameover = gameover;
-                gamedata.currentProgress.won = won;
-                gamedata.currentProgress.lost = lost;
-                localStorage.setItem("secretRoomleData", JSON.stringify(gamedata));
-            }
+            persistCurrentProgress();
             
             setElements();
             drawMap();
@@ -985,7 +1037,7 @@ export function runCore(gamemode) {
         document.getElementById("gameCanvas").style.height = `${visualSize}px`;
         size = 2000; // Now scaled with css and ctx
         mapSize = size;
-        roomSize = Math.ceil(mapSize / 15);
+        roomSize = Math.ceil(mapSize / CANVAS_GRID_SIZE);
         halfCell = roomSize / 3;
         rockSize = roomSize / 3;
         ctx.scale(size/visualSize, size/visualSize);
@@ -1062,14 +1114,19 @@ export function runCore(gamemode) {
         setEasyUSR();
     });
 
-    function setEasyUSR() {
-        easyUSR = !easyUSR;
+    function applyEasyUSRState(enabled) {
+        // Default to enabled unless the stored value is explicitly false.
+        easyUSR = enabled !== false;
 
         if (easyUSR) {
             document.getElementById("easyUSRButton").style.backgroundImage = "url('images/checked.svg')";
         } else {
             document.getElementById("easyUSRButton").style.backgroundImage = "url('images/unchecked.svg')";
         }
+    }
+
+    function setEasyUSR() {
+        applyEasyUSRState(!easyUSR);
 
         if (settingsdata) {
             settingsdata.isEasyUSR = easyUSR;
@@ -1086,9 +1143,11 @@ export function runCore(gamemode) {
 
         if (showTileDistance) {
             document.getElementById("distanceButton").style.backgroundImage = "url('images/checked.svg')";
-            tileDistances = calculateTileDistances();
+            const sourceMap = initialPuzzleSnapshot?.map ?? generator?.map;
+            tileDistances = initialTileDistances ?? (sourceMap ? calculateInitialVisibleTileDistances(sourceMap) : null);
         } else {
             document.getElementById("distanceButton").style.backgroundImage = "url('images/unchecked.svg')";
+            tileDistances = null;
         }
 
         if (settingsdata) {
@@ -1115,6 +1174,21 @@ export function runCore(gamemode) {
             settingsdata.showAllInfo = showAllInfo;
         }
         localStorage.setItem("settingsData", JSON.stringify(settingsdata));
+        renderBombHud();
+
+        // Toggling this setting changes effective bombs remaining by 1,
+        // so re-check game over immediately.
+        if (!gameover && generator) {
+            handleGameOver();
+            if (gameover && gamemode == "daily") {
+                generateResults();
+            }
+            if (gameover) {
+                setElements();
+            }
+            persistCurrentProgress();
+        }
+
         drawMap();
     }
 
@@ -1151,7 +1225,7 @@ export function runCore(gamemode) {
                 guesses -= 2;
             }
         }
-        document.getElementById("guessesremaining").textContent = guesses; // Set new guesses
+        renderBombHud();
 
         if (settingsdata && gamemode == "daily") {
             settingsdata.hardModeDaily = hardMode;
