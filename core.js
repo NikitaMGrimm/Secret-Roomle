@@ -938,12 +938,24 @@ export function runCore(gamemode) {
         console.log(generator.map)
     }
 
+    function getCanvasCoordinates(event) {
+        const rect = canvas.getBoundingClientRect();
+        if (!rect.width || !rect.height) {
+            return null;
+        }
+
+        const x = (event.clientX - rect.left) * (canvas.width / rect.width);
+        const y = (event.clientY - rect.top) * (canvas.height / rect.height);
+        return [x, y];
+    }
+
     canvas.addEventListener("mousemove", event => {
         if (!gameover) {
-            let transform = ctx.getTransform();
-            let transformedX = (event.offsetX - transform.e) * (size/visualSize);
-            let transformedY = (event.offsetY - transform.f) * (size/visualSize);
-            drawMap([transformedX, transformedY]);
+            const canvasCoords = getCanvasCoordinates(event);
+            if (!canvasCoords) {
+                return;
+            }
+            drawMap(canvasCoords);
         }
     })
 
@@ -959,9 +971,12 @@ export function runCore(gamemode) {
         if (!gameover) {
             // If this is the first click of a new game, add to total games played in stats (so entering counts as a game played, as you can get secret rooms even if you dont "win")
 
-            let transform = ctx.getTransform();
-            let transformedX = (event.offsetX - transform.e) * (size/visualSize);
-            let transformedY = (event.offsetY - transform.f) * (size/visualSize);
+            const canvasCoords = getCanvasCoordinates(event);
+            if (!canvasCoords) {
+                return;
+            }
+            let transformedX = canvasCoords[0];
+            let transformedY = canvasCoords[1];
             let cellX = Math.floor(transformedX / roomSize);
             let cellY = Math.floor(transformedY / roomSize);
             if (cellX < 0 || cellX >= CANVAS_GRID_SIZE || cellY < 0 || cellY >= CANVAS_GRID_SIZE) {
