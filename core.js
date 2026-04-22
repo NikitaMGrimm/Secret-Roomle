@@ -171,8 +171,16 @@ export function runCore(gamemode) {
         persistDailyData();
     }
 
+    function getBombPenalty() {
+        return showAllInfo ? 1 : 0;
+    }
+
     function getDisplayedGuesses() {
-        return guesses - (showAllInfo ? 1 : 0);
+        return Math.max(0, guesses - getBombPenalty());
+    }
+
+    function getDisplayedTotalBombs(totalBombs) {
+        return Math.max(0, totalBombs - getBombPenalty());
     }
 
     function renderBombHud() {
@@ -710,6 +718,7 @@ export function runCore(gamemode) {
             levelnum === 12 ? startingGuesses + 4 : // Void is nasty
             null)
             + (hardMode ? 2 : 0); // hard mode gives 2 extra bombs!
+        const displayedTotalBombs = getDisplayedTotalBombs(totalBombs);
         let bombPerformance = (
             won == false ? "🟥":
             levelnum == 12 && guesses <= 2 && !hardMode ? "🟧" :
@@ -734,7 +743,7 @@ export function runCore(gamemode) {
             null); // Attempt at balance based on starting floor - now hard coded to give a roughly even spread for each floor!
             // Spread for normal (6 guesses) 2 green 2 yellow 1 orange, stage 10 (8 guesses) is 2 green 3 yellow 2 orange, stage 12 (10 guesses) is 3 green 3 yellow 3 orange!
             // Spread for hard: (8 guesses) 2 green 2 yellow 2 orange (1 less cause takes 1 more bomb), stage 11 (10 guesses) 3 green 3 yellow 2 orange, stage 12 (12 gueses) green 3 yellow 4 orange 3
-        results += `\n${bombPerformance} ${getDisplayedGuesses()}/${totalBombs} bomb(s) remaining`
+        results += `\n${bombPerformance} ${getDisplayedGuesses()}/${displayedTotalBombs} bomb(s) remaining`
 
         let elapsed = Date.now() - startTime;
         let seconds = gameTime + (elapsed/1000);
